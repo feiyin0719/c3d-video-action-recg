@@ -66,7 +66,7 @@ with tf.Graph().as_default():
     accuracy=tower_acc(logit,labels_placeholder)
 
 
-    cross_entropy_mean = tf.reduce_sum(
+    cross_entropy_mean = tf.reduce_mean(
         tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels_placeholder, logits=logit)
     )
 
