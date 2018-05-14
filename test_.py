@@ -11,13 +11,13 @@
 -------------------------------------------------
 """
 import cv2
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
 from tensorflow.contrib import slim
 
 from model import C3d
 
-if __name__=='__main__':
+if __name__ == '__main__':
     # image_names=['./images/frame/cut/cut_s7/0.jpg','./images/frame/cut/cut_s7/10.jpg']
     # # 输出TFRecord文件的地址
     # filename = "./mnist_output.tfrecords"
@@ -60,4 +60,4 @@ if __name__=='__main__':
     # image = sess.run([images])
     # print image[0].reshape(2,1920,1080,3)
     # sess.close()
-    print ("{0}:train accuracy: {1:.5f}".format(2,0.5))
+    print ("{0}:train accuracy: {1:.5f}".format(2, 0.5))

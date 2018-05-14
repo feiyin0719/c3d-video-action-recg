@@ -12,27 +12,30 @@
 """
 import argparse
 import cPickle as pickle
-import numpy as np
 import cv2
+import numpy as np
 import tensorflow as tf
 
 from config import Config
 
-parser = argparse.ArgumentParser(usage="python create_tfrecords.py --picklepath picklepath --savepath savepath", description="help info.")
-parser.add_argument("--picklepath", default="", help="the pickle path.", dest="picklepath",required=True)
-parser.add_argument("--savepath", default="", help="the save path.", dest="savepath",required=True)
+parser = argparse.ArgumentParser(usage="python create_tfrecords.py --picklepath picklepath --savepath savepath",
+                                 description="help info.")
+parser.add_argument("--picklepath", default="", help="the pickle path.", dest="picklepath", required=True)
+parser.add_argument("--savepath", default="", help="the save path.", dest="savepath", required=True)
 args = parser.parse_args()
-def create_records(picklepath,savepath):
-    with open(picklepath,'r') as f:
-        data=pickle.load(f)
+
+
+def create_records(picklepath, savepath):
+    with open(picklepath, 'r') as f:
+        data = pickle.load(f)
     writer = tf.python_io.TFRecordWriter(savepath)
-    for i in range(len(data['label'])):
-        imagepaths=data['data'][i]
-        label=data['label'][i]
+    for i in range(len(data)):
+        imagepaths = data[i]['data']
+        label = data[i]['label']
         images = []
         for imagepath in imagepaths:
-            image=cv2.imread(imagepath)
-            image=cv2.resize(image,(Config.image_size,Config.image_size))
+            image = cv2.imread(imagepath)
+            image = cv2.resize(image, (Config.image_size, Config.image_size))
             images.append(image)
         images = np.array(images)
         example = tf.train.Example(features=tf.train.Features(feature={
@@ -41,7 +44,9 @@ def create_records(picklepath,savepath):
         }))
         writer.write(example.SerializeToString())
     writer.close()
-if __name__=='__main__':
-    picklepath=args.picklepath
-    savepath=args.savepath
-    create_records(picklepath,savepath)
+
+
+if __name__ == '__main__':
+    picklepath = args.picklepath
+    savepath = args.savepath
+    create_records(picklepath, savepath)

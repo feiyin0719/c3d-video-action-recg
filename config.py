@@ -10,6 +10,8 @@
                    5/7/18:
 -------------------------------------------------
 """
+
+
 class Config:
-    image_size=112
-    channels=16
+    image_size = 112
+    channels = 16

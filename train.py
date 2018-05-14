@@ -11,78 +11,88 @@
 -------------------------------------------------
 """
 import os
-
 import tensorflow as tf
 
 import dataset_records
 from config import Config
 from model import C3d
 
-BATCH_SIZE=4
-FINE_PATH='/home/iffly/dataset/finetuning_ucf101.model'
-TRAIN_PATH='/home/iffly/dataset/train_data.tfrecords'
-TEST_PATH='/home/iffly/dataset/train_data.tfrecords'
-EPOCH=5
-NUM_CLASS=20
+BATCH_SIZE = 4
+FINE_PATH = '/home/iffly/dataset/finetuning_ucf101.model'
+TRAIN_PATH = '/home/iffly/dataset/train_data.tfrecords'
+TEST_PATH = '/home/iffly/dataset/train_data.tfrecords'
+EPOCH = 5
+NUM_CLASS = 20
 MOVING_AVERAGE_DECAY = 0.9999
-MODEL_SAVE_PATH='/home/iffly/dataset/models'
-TENSORBOARD_PATH='/home/iffly/dataset/visual_logs/'
-LR1=1e-4
-LR2=1e-3
-STEP_INV1=5
-STEP_INV2=1000
+MODEL_SAVE_PATH = '/home/iffly/dataset/models'
+TENSORBOARD_PATH = '/home/iffly/dataset/visual_logs/'
+LR1 = 1e-4
+LR2 = 1e-3
+DECAY_RATE = 0.9
+DECAY_RATE1 = 0.9
+STEP_INV1 = 5
+STEP_INV2 = 1000
+TRAIN_LEN = 1000
+
 
 def tower_acc(logit, labels):
-  correct_pred = tf.equal(tf.argmax(logit, 1), labels)
-  accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
-  return accuracy
+    correct_pred = tf.equal(tf.argmax(logit, 1), labels)
+    accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+    return accuracy
+
+
 with tf.Graph().as_default():
-    opt_stable = tf.train.AdamOptimizer(LR1)
-    opt_finetuning = tf.train.AdamOptimizer(LR2)
     global_step = tf.get_variable(
-                    'global_step',
-                    [],
-                    initializer=tf.constant_initializer(0),
-                    trainable=False
-                    )
-    images_placeholder = tf.placeholder(tf.float32, shape=(BATCH_SIZE,
+        'global_step',
+        [],
+        initializer=tf.constant_initializer(0),
+        trainable=False
+    )
+
+    global_step1 = tf.get_variable(
+        'global_step1',
+        [],
+        initializer=tf.constant_initializer(0),
+        trainable=False
+    )
+    learning_rate = tf.train.exponential_decay(LR1, global_step=global_step, decay_rate=DECAY_RATE,
+                                               decay_steps=TRAIN_LEN / BATCH_SIZE, staircase=True)
+    learning_rate1 = tf.train.exponential_decay(LR2, global_step=global_step1, decay_rate=DECAY_RATE1,
+                                                decay_steps=TRAIN_LEN / BATCH_SIZE, staircase=True)
+    opt_stable = tf.train.AdamOptimizer(learning_rate)
+    opt_finetuning = tf.train.AdamOptimizer(learning_rate1)
+    images_placeholder = tf.placeholder(tf.float32, shape=(None,
                                                            Config.channels,
                                                            Config.image_size,
                                                            Config.image_size,
                                                            3))
-    labels_placeholder = tf.placeholder(tf.int64, shape=(BATCH_SIZE))
-    keep_prob=tf.placeholder(tf.float32)
+    labels_placeholder = tf.placeholder(tf.int64, shape=(None))
+    keep_prob = tf.placeholder(tf.float32)
 
-    train_data=dataset_records.dataset_records(TRAIN_PATH,BATCH_SIZE,EPOCH)
-
-
-
-
-
-    c3d=C3d(num_class=NUM_CLASS,keep_prob=keep_prob)
-    logit=c3d.build_model(images_placeholder)
-    weights=c3d.getweights()
-    biases=c3d.getbiases()
-    accuracy=tower_acc(logit,labels_placeholder)
-
+    train_data = dataset_records.dataset_records(TRAIN_PATH, BATCH_SIZE, EPOCH)
+    c3d = C3d(num_class=NUM_CLASS, keep_prob=keep_prob)
+    logit = c3d.build_model(images_placeholder)
+    weights = c3d.getweights()
+    biases = c3d.getbiases()
+    accuracy = tower_acc(logit, labels_placeholder)
 
     cross_entropy_mean = tf.reduce_mean(
         tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels_placeholder, logits=logit)
     )
 
     weight_decay_loss = tf.get_collection('weight_decay_loss')
-    weight_decay_loss=tf.add_n(weight_decay_loss)
+    weight_decay_loss = tf.add_n(weight_decay_loss)
     loss = cross_entropy_mean + weight_decay_loss
     varlist2 = [weights['out'], biases['out']]
     varlist1 = list(set(weights.values() + biases.values()) - set(varlist2))
     grads1 = opt_stable.compute_gradients(loss, varlist1)
     grads2 = opt_finetuning.compute_gradients(loss, varlist2)
-    apply_gradient_op1 = opt_stable.apply_gradients(grads1)
-    apply_gradient_op2 = opt_finetuning.apply_gradients(grads2, global_step=global_step)
+    apply_gradient_op1 = opt_stable.apply_gradients(grads1, global_step=global_step)
+    apply_gradient_op2 = opt_finetuning.apply_gradients(grads2, global_step=global_step1)
     variable_averages = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY)
 
     variables_averages_op = variable_averages.apply(tf.trainable_variables())
-    train_op = tf.group(apply_gradient_op1, apply_gradient_op2,variable_averages )
+    train_op = tf.group(apply_gradient_op1, apply_gradient_op2, variables_averages_op)
     # Create a saver for writing training checkpoints.
     saver = tf.train.Saver(weights.values() + biases.values())
     init = tf.global_variables_initializer()
@@ -90,37 +100,40 @@ with tf.Graph().as_default():
     # Create a session for running Ops on the Graph.
     sess = tf.Session()
     sess.run(init)
-    if os.path.isfile(FINE_PATH):
-      saver.restore(sess, FINE_PATH)
+    if os.path.isfile(FINE_PATH + ".data-00000-of-00001"):
+        saver.restore(sess, FINE_PATH)
     # merged = tf.summary.merge_all()
 
-    accuracy_summary=tf.summary.scalar('accuracy', accuracy)
+    accuracy_summary = tf.summary.scalar('accuracy', accuracy)
     cross_loss_summary = tf.summary.scalar(
         'cross_loss',
         cross_entropy_mean
     )
     weight_decay_loss_summary = tf.summary.scalar('weight_decay_loss', weight_decay_loss)
-    total_loss_summary=tf.summary.scalar('total_loss', loss)
-    merged=tf.summary.merge_all()
-    train_writer = tf.summary.FileWriter(TENSORBOARD_PATH+'train', sess.graph)
-    test_writer = tf.summary.FileWriter(TENSORBOARD_PATH+'test', sess.graph)
+    total_loss_summary = tf.summary.scalar('total_loss', loss)
+    merged = tf.summary.merge_all()
+    train_writer = tf.summary.FileWriter(TENSORBOARD_PATH + 'train', sess.graph)
+    test_writer = tf.summary.FileWriter(TENSORBOARD_PATH + 'test', sess.graph)
     train_iterator = train_data.make_one_shot_iterator()
     train_one_element = train_iterator.get_next()
 
-    step=0
+    step = 0
+    best_acc = 0
+    best_model_index = -1
+    best_model_index_file = open("best_model_index.tx", "wb+")
     try:
         while True:
             data = sess.run(train_one_element)
 
             if (step) % STEP_INV1 == 0:
                 print('Training Data Eval:')
-                summary, acc,cross_loss_val,_ = sess.run(
-                    [merged, accuracy,cross_entropy_mean,train_op],
+                summary, acc, cross_loss_val, _ = sess.run(
+                    [merged, accuracy, cross_entropy_mean, train_op],
                     feed_dict={images_placeholder: data[0],
                                labels_placeholder: data[1],
-                               keep_prob:0.6,
+                               keep_prob: 0.6,
                                })
-                print ("{0}:train accuracy: {1:.5f}   loss: {2:.5f}".format(step,acc,cross_loss_val))
+                print ("{0}:train accuracy: {1:.5f}   loss: {2:.5f}".format(step, acc, cross_loss_val))
                 train_writer.add_summary(summary, step)
             else:
                 sess.run(train_op, feed_dict={
@@ -128,35 +141,30 @@ with tf.Graph().as_default():
                     labels_placeholder: data[1],
                     keep_prob: 0.6,
                 })
-            if step%STEP_INV2==0:
+            if step % STEP_INV2 == 0 and step != 0:
                 saver.save(sess, os.path.join(MODEL_SAVE_PATH, 'c3d_ucf_model'), global_step=step)
                 test_data = dataset_records.dataset_records(TEST_PATH, BATCH_SIZE, 1)
                 test_iterator = test_data.make_one_shot_iterator()
                 test_one_element = test_iterator.get_next()
                 print('Validation Data Eval:')
+                accuracy_total = 0
+                c_loss_total = 0
+                len_total = 0
+                test_step = 0
                 try:
-                    accuracy_total=0
-                    c_loss_total=0
-                    len_total=0
-                    test_step=0
                     while True:
-                        test_data= sess.run(train_one_element)
-                        acc,c_loss = sess.run(
-                            [ accuracy,cross_entropy_mean],
+                        test_data = sess.run(test_one_element)
+                        acc, c_loss = sess.run(
+                            [accuracy, cross_entropy_mean],
                             feed_dict={
                                 images_placeholder: test_data[0],
                                 labels_placeholder: test_data[1],
                                 keep_prob: 1,
                             })
                         len_total += len(test_data[1])
-                        c_loss_total+=c_loss
-                        accuracy_total+=acc*len(test_data[1])
-                        test_step+=1
-
-
-
-
-                        # test_writer.add_summary(summary, step)
+                        c_loss_total += c_loss
+                        accuracy_total += acc * len(test_data[1])
+                        test_step += 1
 
                 except tf.errors.OutOfRangeError:
                     acc_avg = accuracy_total / len_total
@@ -169,6 +177,13 @@ with tf.Graph().as_default():
                     test_writer.add_summary(
                         tf.Summary(value=[tf.Summary.Value(tag='cross_loss', simple_value=c_loss_avg)]),
                         step)
-            step+=1
+                    if acc_avg > best_acc:
+                        best_acc = acc_avg
+                        best_model_index = step
+                        print("best model index is:{},acc:{}".format(best_model_index, acc_avg))
+                        best_model_index_file.writelines(
+                            "best model index is:{},acc:{}".format(best_model_index, acc_avg))
+
+            step += 1
     except tf.errors.OutOfRangeError:
         print("end!")
