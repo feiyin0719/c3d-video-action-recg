@@ -14,7 +14,8 @@ import tensorflow as tf
 
 
 class C3d(object):
-    def __init__(self, num_class=20, keep_prob=0.5, wd=0.00005, frame_num=16, size_w=112, size_h=112, chanel_num=3):
+    def __init__(self, num_class=20, keep_prob=0.5, wd=0.00005, frame_num=16, size_w=112, size_h=112, chanel_num=3,
+                 weight_init=tf.contrib.layers.xavier_initializer()):
         self.num_class = num_class
         self.keep_prob = keep_prob
         self.frame_num = frame_num
@@ -22,6 +23,7 @@ class C3d(object):
         self.size_h = size_h
         self.chanel_num = chanel_num
         self.wd = wd
+        self.weight_init = weight_init
 
     def _variable(self, name, shape, initializer):
         with tf.device("/cpu:0"):
@@ -29,17 +31,18 @@ class C3d(object):
         return var
 
     def _variable_with_weight_decay(self, name, shape, stddev, wd):
-        var = self._variable(name, shape, tf.contrib.layers.xavier_initializer())
+        var = self._variable(name, shape, self.weight_init)
         if wd is not None:
-            weight_decay = tf.nn.l2_loss(var) * wd
+            weight_decay = tf.multiply(tf.nn.l2_loss(var), wd)
             tf.add_to_collection('weight_decay_loss', weight_decay)
         return var
 
     def conv3d(self, name, l_input, w, b):
-        return tf.nn.bias_add(
-            tf.nn.conv3d(l_input, w, strides=[1, 1, 1, 1, 1], padding='SAME'),
-            b
-        )
+        with tf.variable_scope(name) as scope:
+            return tf.nn.bias_add(
+                tf.nn.conv3d(l_input, w, strides=[1, 1, 1, 1, 1], padding='SAME'),
+                b
+            )
 
     def max_pool(self, name, l_input, k):
         return tf.nn.max_pool3d(l_input, ksize=[1, k, 2, 2, 1], strides=[1, k, 2, 2, 1], padding='SAME', name=name)
@@ -100,7 +103,7 @@ class C3d(object):
         _dropout = self.keep_prob
         # Convolution Layer
         net = conv3d('conv1', self.input, _weights['wc1'], _biases['bc1'])
-        conv1 = tf.nn.relu(net, 'relu1')
+        net = tf.nn.relu(net, 'relu1')
         net = max_pool('pool1', net, k=1)
 
         # Convolution Layer
@@ -133,15 +136,15 @@ class C3d(object):
         net = tf.transpose(net, perm=[0, 1, 4, 2, 3])
         net = tf.reshape(net, [-1, _weights['wd1'].get_shape().as_list()[
             0]])  # Reshape conv3 output to fit dense layer input
-        net = tf.matmul(net, _weights['wd1']) + _biases['bd1']
+        net = tf.nn.bias_add(tf.matmul(net, _weights['wd1']), _biases['bd1'])
 
         net = tf.nn.relu(net, name='fc1')  # Relu activation
         net = tf.nn.dropout(net, _dropout)
 
-        net = tf.nn.relu(tf.matmul(net, _weights['wd2']) + _biases['bd2'], name='fc2')  # Relu activation
+        net = tf.nn.relu(tf.nn.bias_add(tf.matmul(net, _weights['wd2']), _biases['bd2']), name='fc2')  # Relu activation
         net = tf.nn.dropout(net, _dropout)
 
         # Output: class prediction
-        net = tf.matmul(net, _weights['out']) + _biases['out']
+        net = tf.nn.bias_add(tf.matmul(net, _weights['out']), _biases['out'], name='out')
 
         return net

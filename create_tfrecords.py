@@ -26,7 +26,7 @@ args = parser.parse_args()
 
 
 def create_records(picklepath, savepath):
-    with open(picklepath, 'r') as f:
+    with open(picklepath, 'rb') as f:
         data = pickle.load(f)
     writer = tf.python_io.TFRecordWriter(savepath)
     for i in range(len(data)):
