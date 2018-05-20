@@ -34,11 +34,12 @@ LR2 = 1e-4
 # finetune use this
 # LR1=1e-5
 # LR2=1e-4
+TRAIN_LEN = 2000
 DECAY_RATE = 0.9
 DECAY_RATE1 = 0.9
 STEP_INV1 = 5
-STEP_INV2 = 1000  # =TRAIN_LEN/2
-TRAIN_LEN = 2000
+STEP_INV2 = int(TRAIN_LEN/BATCH_SIZE/2)  # =TRAIN_LEN/2
+
 
 
 def tower_acc(logit, labels):
@@ -107,12 +108,12 @@ with tf.Graph().as_default():
     grads2 = opt_finetuning.compute_gradients(loss, varlist2)
     apply_gradient_op1 = opt_stable.apply_gradients(grads1, global_step=global_step)
     apply_gradient_op2 = opt_finetuning.apply_gradients(grads2, global_step=global_step1)
-    variable_averages = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY)
+    variable_averages = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY,global_step=global_step)
 
     variables_averages_op = variable_averages.apply(tf.trainable_variables())
     train_op = tf.group(apply_gradient_op1, apply_gradient_op2, variables_averages_op)
     # Create a saver for writing training checkpoints.
-    saver = tf.train.Saver(weights.values() + biases.values())
+    saver = tf.train.Saver(list(weights.values()) + list(biases.values()))
     init = tf.global_variables_initializer()
 
     # Create a session for running Ops on the Graph.
