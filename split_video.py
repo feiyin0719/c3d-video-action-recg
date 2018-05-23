@@ -12,9 +12,11 @@
 """
 import argparse
 import cv2
+import numpy as np
 import os
+import re
+import subprocess
 import sys
-import time
 
 parser = argparse.ArgumentParser(usage="python split_video.py --video videopath --output outputpath",
                                  description="help info.")
@@ -25,6 +27,31 @@ video_path = args.video_path
 output_path = args.output_path
 
 
+def rotate_bound(image, angle):
+    # grab the dimensions of the image and then determine the
+    # center
+    (h, w) = image.shape[:2]
+    (cX, cY) = (w // 2, h // 2)
+
+    # grab the rotation matrix (applying the negative of the
+    # angle to rotate clockwise), then grab the sine and cosine
+    # (i.e., the rotation components of the matrix)
+    M = cv2.getRotationMatrix2D((cX, cY), -angle, 1.0)
+    cos = np.abs(M[0, 0])
+    sin = np.abs(M[0, 1])
+
+    # compute the new bounding dimensions of the image
+    nW = int((h * sin) + (w * cos))
+    nH = int((h * cos) + (w * sin))
+
+    # adjust the rotation matrix to take into account translation
+    M[0, 2] += (nW / 2) - cX
+    M[1, 2] += (nH / 2) - cY
+
+    # perform the actual rotation and return the image
+    return cv2.warpAffine(image, M, (nW, nH))
+
+
 def split_video(video_path, class_name):
     _, file_name = os.path.split(video_path)
     video_name, _ = os.path.splitext(file_name)
@@ -33,6 +60,24 @@ def split_video(video_path, class_name):
     if not os.path.exists(os.path.join(output_path, 'flow', class_name, video_name)):
         os.makedirs(os.path.join(output_path, 'flow', class_name, video_name))
     capture = cv2.VideoCapture(video_path)
+    # format_str=os.popen('ffprobe -print_format  json -select_streams v -show_format -show_streams -i "{}"'.format(video_path))
+    format_str = subprocess.Popen(
+        'ffprobe -print_format  json -select_streams v -show_format -show_streams -i "{}"'.format(video_path),
+        shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    format_str = format_str.stdout.read()
+    # print format_str
+    match = re.search('"rotate": "([0-9]+)"', format_str)
+    rotate = 0
+    if match:
+        str1 = match.group(1)
+        str2 = re.search('([0-9]+)', str1).group(1)
+        rotate = int(str2)
+    # ff = FFmpeg(inputs={video_path: video_path},
+    #             outputs={out_path: 'fprobe -print_format  json -select_streams v -show_format -show_streams -i ,
+    #                      out_path2: '-y -f mjpeg -ss 0 -t 0.001',
+    #                      None: '-c copy -map 0 -y -f segment -segment_list {0} -segment_time 1  -bsf:v h264_mp4toannexb  {1}/cat_output%03d.ts'.format(
+    #                          out_path3, base_path),
+    #                      })
     if capture.isOpened():
         now_frame = 0
         old_frame = None
@@ -40,8 +85,11 @@ def split_video(video_path, class_name):
             success, frame = capture.read()
             if not success:
                 break
+            # print frame.shape
+            frame = rotate_bound(frame, rotate)
             cv2.imwrite(os.path.join(output_path, 'frame', class_name, video_name, "{}.jpg".format(now_frame)), frame)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
             # calc optical
             # if  old_frame is None:
             #     old_frame=frame
