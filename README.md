@@ -6,6 +6,7 @@ the c3d network base on tensorflow
 
 
 #usage
+
 1.split video
 
 python split_video.py --video videopath --output outputpath
