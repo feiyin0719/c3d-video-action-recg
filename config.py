@@ -15,3 +15,5 @@
 class Config:
     image_size = 112
     channels = 16
+    image_w = 480
+    image_h = 270

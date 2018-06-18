@@ -35,7 +35,7 @@ def create_records(picklepath, savepath):
         images = []
         for imagepath in imagepaths:
             image = cv2.imread(imagepath)
-            image = cv2.resize(image, (Config.image_size, Config.image_size))
+            image = cv2.resize(image, (Config.image_w, Config.image_h))
             images.append(image)
         images = np.array(images)
         example = tf.train.Example(features=tf.train.Features(feature={

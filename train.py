@@ -38,8 +38,7 @@ TRAIN_LEN = 2000
 DECAY_RATE = 0.9
 DECAY_RATE1 = 0.9
 STEP_INV1 = 5
-STEP_INV2 = int(TRAIN_LEN/BATCH_SIZE/2)  # =TRAIN_LEN/2
-
+STEP_INV2 = int(TRAIN_LEN / BATCH_SIZE / 2)  # =TRAIN_LEN/2
 
 
 def tower_acc(logit, labels):
@@ -108,7 +107,7 @@ with tf.Graph().as_default():
     grads2 = opt_finetuning.compute_gradients(loss, varlist2)
     apply_gradient_op1 = opt_stable.apply_gradients(grads1, global_step=global_step)
     apply_gradient_op2 = opt_finetuning.apply_gradients(grads2, global_step=global_step1)
-    variable_averages = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY,global_step=global_step)
+    variable_averages = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY, global_step=global_step)
 
     variables_averages_op = variable_averages.apply(tf.trainable_variables())
     train_op = tf.group(apply_gradient_op1, apply_gradient_op2, variables_averages_op)
@@ -163,7 +162,7 @@ with tf.Graph().as_default():
                 })
             if step % STEP_INV2 == 0 and step != 0:
                 saver.save(sess, os.path.join(MODEL_SAVE_PATH, 'c3d_ucf_model'), global_step=step)
-                test_data = dataset_records.dataset_records(TEST_PATH, BATCH_SIZE, 1)
+                test_data = dataset_records.dataset_records(TEST_PATH, BATCH_SIZE, 1, istrain=False)
                 test_iterator = test_data.make_one_shot_iterator()
                 test_one_element = test_iterator.get_next()
                 print('Validation Data Eval:')
